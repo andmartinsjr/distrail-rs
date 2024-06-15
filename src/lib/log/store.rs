@@ -3,33 +3,31 @@ use std::os::unix::fs::MetadataExt;
 use std::sync::Arc;
 
 use tokio::fs::File;
-use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, Result};
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufWriter, Result};
 use tokio::sync::Mutex;
 
 const LEN_WIDTH: u64 = 8;
-const BUFFER_SIZE: usize = 8 * 1024;
 
 #[derive(Debug)]
 struct InnerStore {
-    file: File,
-    buffer: Vec<u8>,
+    buf_file: BufWriter<File>,
     size: u64,
 }
 
 impl InnerStore {
     async fn new(file: File) -> Result<Self> {
         let size = file.metadata().await?.size();
-        let buffer = Vec::with_capacity(BUFFER_SIZE);
+        let buf_file = BufWriter::new(file);
 
-        Ok(Self { file, size, buffer })
+        Ok(Self { buf_file, size })
     }
 
     async fn append(&mut self, p: &[u8]) -> Result<(u64, u64)> {
         let pos = self.size;
         let len = p.len() as u64;
 
-        self.buffer.write_u64(len).await?;
-        self.buffer.write_all(p).await?;
+        self.buf_file.write_u64(len).await?;
+        self.buf_file.write_all(p).await?;
 
         let written = len + LEN_WIDTH;
 
@@ -39,36 +37,31 @@ impl InnerStore {
     }
 
     async fn read(&mut self, pos: u64) -> Result<Vec<u8>> {
-        self.file.write_all(&self.buffer).await?;
-        self.file.flush().await?;
-        self.buffer.clear();
+        self.buf_file.flush().await?;
 
         let mut size_buffer = [0_u8; LEN_WIDTH as usize];
-        self.file.seek(SeekFrom::Start(pos)).await?;
-        self.file.read_exact(&mut size_buffer).await?;
+        self.buf_file.seek(SeekFrom::Start(pos)).await?;
+        self.buf_file.read_exact(&mut size_buffer).await?;
         let size = u64::from_be_bytes(size_buffer);
 
         let mut buf = vec![0u8; size as usize];
-        self.file.seek(SeekFrom::Start(pos + LEN_WIDTH)).await?;
-        self.file.read_exact(&mut buf).await?;
+        self.buf_file.seek(SeekFrom::Start(pos + LEN_WIDTH)).await?;
+        self.buf_file.read_exact(&mut buf).await?;
 
         Ok(buf)
     }
 
     async fn read_at(&mut self, p: &mut [u8], off: u64) -> Result<u64> {
-        self.file.write_all(&self.buffer).await?;
-        self.file.flush().await?;
-        self.buffer.clear();
+        self.buf_file.flush().await?;
 
-        self.file.seek(SeekFrom::Start(off)).await?;
-        let read_size = self.file.read_exact(p).await?;
+        self.buf_file.seek(SeekFrom::Start(off)).await?;
+        let read_size = self.buf_file.read_exact(p).await?;
 
         Ok(read_size as u64)
     }
 
     async fn flush(&mut self) -> Result<()> {
-        self.file.write_all(&self.buffer).await?;
-        self.file.flush().await?;
+        self.buf_file.flush().await?;
         Ok(())
     }
 }
