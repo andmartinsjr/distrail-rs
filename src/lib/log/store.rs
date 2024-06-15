@@ -107,3 +107,88 @@ impl Store {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use std::env;
+    use std::os::unix::fs::MetadataExt;
+
+    use tokio::fs::{File, remove_file};
+
+    use super::{LEN_WIDTH, Store};
+
+    const TEST_LOG_ENTRY: &[u8] = b"hello world";
+    const WIDTH: u64 = TEST_LOG_ENTRY.len() as u64 + LEN_WIDTH;
+
+    #[tokio::test]
+    async fn store_append_read() {
+        let tmp_dir = env::temp_dir();
+        let file_path = tmp_dir.join("store_append_read_test");
+        let t_file = File::options().append(true).read(true).create(true).open(&file_path).await.unwrap();
+        let t_store = Store::new(t_file).await.unwrap();
+        test_append(&t_store).await;
+        test_read(&t_store).await;
+        test_read_at(&t_store).await;
+        drop(t_store);
+        let t_file = File::options().append(true).read(true).create(true).open(&file_path).await.unwrap();
+        let t_store = Store::new(t_file).await.unwrap();
+        test_read(&t_store).await;
+        drop(t_store);
+        remove_file(file_path).await.unwrap();
+    }
+
+    async fn test_append(s: &Store) {
+        for i in 1..4 {
+            let (n, pos) = s.append(TEST_LOG_ENTRY).await.unwrap();
+            assert_eq!(pos + n, WIDTH * i)
+        }
+    }
+
+    async fn test_read(s: &Store) {
+        let mut pos = 0;
+        for _ in 1..4 {
+            let read = s.read(pos).await.unwrap();
+            assert_eq!(TEST_LOG_ENTRY, read);
+            pos += WIDTH
+        }
+    }
+
+    async fn test_read_at(s: &Store) {
+        let mut off = 0;
+        for _ in 1..4 {
+            let mut size_buf = [0_u8; LEN_WIDTH as usize];
+            let n = s.read_at(&mut size_buf, off).await.unwrap();
+            assert_eq!(LEN_WIDTH, n);
+            off += n;
+            let size = u64::from_be_bytes(size_buf);
+            let mut buf = vec![0u8; size as usize];
+            let n = s.read_at(&mut buf, off).await.unwrap();
+            assert_eq!(TEST_LOG_ENTRY, buf);
+            assert_eq!(size, n);
+            off += n
+        }
+    }
+
+    #[tokio::test]
+    async fn store_close() {
+        let tmp_dir = env::temp_dir();
+        let file_path = tmp_dir.join("store_close_test");
+        let t_file = File::options().append(true).read(true).create(true).open(&file_path).await.unwrap();
+        let t_store = Store::new(t_file).await.unwrap();
+        t_store.append(TEST_LOG_ENTRY).await.unwrap();
+        let before_size = get_file_size().await.unwrap();
+        t_store.close().await.unwrap();
+        let after_size = get_file_size().await.unwrap();
+        assert!(after_size > before_size);
+        remove_file(file_path).await.unwrap();
+    }
+
+    async fn get_file_size() -> std::io::Result<u64> {
+        let tmp_dir = env::temp_dir();
+        let file_path = tmp_dir.join("store_close_test");
+        let t_file = File::options().append(true).read(true).create(true).open(&file_path).await?;
+
+        let file_size = t_file.metadata().await?.size();
+
+        Ok(file_size)
+    }
+}
