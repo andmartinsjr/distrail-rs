@@ -2,6 +2,7 @@ use std::io::SeekFrom;
 use std::os::unix::fs::MetadataExt;
 use std::sync::Arc;
 
+use byteorder::{BigEndian, ByteOrder};
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufWriter, Result};
 use tokio::sync::Mutex;
@@ -42,7 +43,7 @@ impl InnerStore {
         let mut size_buffer = [0_u8; LEN_WIDTH as usize];
         self.buf_file.seek(SeekFrom::Start(pos)).await?;
         self.buf_file.read_exact(&mut size_buffer).await?;
-        let size = u64::from_be_bytes(size_buffer);
+        let size = BigEndian::read_u64(&size_buffer);
 
         let mut buf = vec![0u8; size as usize];
         self.buf_file.seek(SeekFrom::Start(pos + LEN_WIDTH)).await?;
@@ -68,34 +69,34 @@ impl InnerStore {
 
 #[derive(Debug)]
 pub(crate) struct Store {
-    inner_store: Arc<Mutex<InnerStore>>,
+    inner: Arc<Mutex<InnerStore>>,
 }
 
 impl Store {
     pub(crate) async fn new(file: File) -> Result<Self> {
         let inner = InnerStore::new(file).await?;
         Ok(Self {
-            inner_store: Arc::new(Mutex::new(inner)),
+            inner: Arc::new(Mutex::new(inner)),
         })
     }
 
     pub(crate) async fn append(&self, p: &[u8]) -> Result<(u64, u64)> {
-        let mut inner_guard = self.inner_store.lock().await;
+        let mut inner_guard = self.inner.lock().await;
         inner_guard.append(p).await
     }
 
     pub(crate) async fn read(&self, pos: u64) -> Result<Vec<u8>> {
-        let mut inner_guard = self.inner_store.lock().await;
+        let mut inner_guard = self.inner.lock().await;
         inner_guard.read(pos).await
     }
 
     pub(crate) async fn read_at(&self, p: &mut [u8], off: u64) -> Result<u64> {
-        let mut inner_guard = self.inner_store.lock().await;
+        let mut inner_guard = self.inner.lock().await;
         inner_guard.read_at(p, off).await
     }
 
     pub(crate) async fn close(self) -> Result<()> {
-        let mut inner_guard = self.inner_store.lock().await;
+        let mut inner_guard = self.inner.lock().await;
         inner_guard.flush().await
     }
 }
@@ -105,7 +106,8 @@ mod tests {
     use std::env;
     use std::os::unix::fs::MetadataExt;
 
-    use tokio::fs::{File, remove_file};
+    use byteorder::{BigEndian, ByteOrder};
+    use tokio::fs::{self, File};
 
     use super::{LEN_WIDTH, Store};
 
@@ -126,7 +128,7 @@ mod tests {
         let t_store = Store::new(t_file).await.unwrap();
         test_read(&t_store).await;
         drop(t_store);
-        remove_file(file_path).await.unwrap();
+        fs::remove_file(file_path).await.unwrap();
     }
 
     async fn test_append(s: &Store) {
@@ -152,7 +154,7 @@ mod tests {
             let n = s.read_at(&mut size_buf, off).await.unwrap();
             assert_eq!(LEN_WIDTH, n);
             off += n;
-            let size = u64::from_be_bytes(size_buf);
+            let size = BigEndian::read_u64(&size_buf);
             let mut buf = vec![0u8; size as usize];
             let n = s.read_at(&mut buf, off).await.unwrap();
             assert_eq!(TEST_LOG_ENTRY, buf);
@@ -172,7 +174,7 @@ mod tests {
         t_store.close().await.unwrap();
         let after_size = get_file_size().await.unwrap();
         assert!(after_size > before_size);
-        remove_file(file_path).await.unwrap();
+        fs::remove_file(file_path).await.unwrap();
     }
 
     async fn get_file_size() -> std::io::Result<u64> {

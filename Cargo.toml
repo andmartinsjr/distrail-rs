@@ -8,4 +8,6 @@ name = "distrailrs"
 path = "src/lib/mod.rs"
 
 [dependencies]
+byteorder = "1.5.0"
+memmap2 = { version = "0.9.4" }
 tokio = { version = "1.38.0", features = ["full"] }
