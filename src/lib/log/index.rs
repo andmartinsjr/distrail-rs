@@ -55,7 +55,8 @@ impl InnerIndex {
         }
 
         let out = BigEndian::read_u32(&self.mmap[pos as usize..(pos + OFF_WIDTH) as usize]);
-        let pos = BigEndian::read_u64(&self.mmap[(pos + OFF_WIDTH) as usize..(pos + ENT_WIDTH) as usize]);
+        let pos =
+            BigEndian::read_u64(&self.mmap[(pos + OFF_WIDTH) as usize..(pos + ENT_WIDTH) as usize]);
 
         Ok((out, pos))
     }
@@ -94,7 +95,7 @@ impl Index {
     pub(crate) async fn new(file: File, config: Config) -> Result<Self> {
         let inner_index = InnerIndex::new(file, config).await?;
         Ok(Self {
-            inner: Arc::new(Mutex::new(inner_index))
+            inner: Arc::new(Mutex::new(inner_index)),
         })
     }
 
@@ -126,7 +127,13 @@ mod tests {
     #[tokio::test]
     async fn test_index() {
         let file_path = env::temp_dir().join("index_test");
-        let t_file = File::options().create(true).read(true).write(true).open(&file_path).await.unwrap();
+        let t_file = File::options()
+            .create(true)
+            .read(true)
+            .write(true)
+            .open(&file_path)
+            .await
+            .unwrap();
 
         let mut config = Config::default();
         config.segment.max_index_bytes = 1024;
@@ -149,7 +156,13 @@ mod tests {
         res.expect_err("expected unexpected EOF error");
         idx.close().await.unwrap();
 
-        let t_file = File::options().create(true).read(true).write(true).open(&file_path).await.unwrap();
+        let t_file = File::options()
+            .create(true)
+            .read(true)
+            .write(true)
+            .open(&file_path)
+            .await
+            .unwrap();
         let idx = Index::new(t_file, config.clone()).await.unwrap();
         let (off, pos) = idx.read(-1).await.unwrap();
         assert_eq!(1, off);

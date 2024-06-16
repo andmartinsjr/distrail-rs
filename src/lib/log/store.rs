@@ -109,7 +109,7 @@ mod tests {
     use byteorder::{BigEndian, ByteOrder};
     use tokio::fs::{self, File};
 
-    use super::{LEN_WIDTH, Store};
+    use super::{Store, LEN_WIDTH};
 
     const TEST_LOG_ENTRY: &[u8] = b"hello world";
     const WIDTH: u64 = TEST_LOG_ENTRY.len() as u64 + LEN_WIDTH;
@@ -118,13 +118,25 @@ mod tests {
     async fn store_append_read() {
         let tmp_dir = env::temp_dir();
         let file_path = tmp_dir.join("store_append_read_test");
-        let t_file = File::options().append(true).read(true).create(true).open(&file_path).await.unwrap();
+        let t_file = File::options()
+            .append(true)
+            .read(true)
+            .create(true)
+            .open(&file_path)
+            .await
+            .unwrap();
         let t_store = Store::new(t_file).await.unwrap();
         test_append(&t_store).await;
         test_read(&t_store).await;
         test_read_at(&t_store).await;
         drop(t_store);
-        let t_file = File::options().append(true).read(true).create(true).open(&file_path).await.unwrap();
+        let t_file = File::options()
+            .append(true)
+            .read(true)
+            .create(true)
+            .open(&file_path)
+            .await
+            .unwrap();
         let t_store = Store::new(t_file).await.unwrap();
         test_read(&t_store).await;
         drop(t_store);
@@ -167,7 +179,13 @@ mod tests {
     async fn store_close() {
         let tmp_dir = env::temp_dir();
         let file_path = tmp_dir.join("store_close_test");
-        let t_file = File::options().append(true).read(true).create(true).open(&file_path).await.unwrap();
+        let t_file = File::options()
+            .append(true)
+            .read(true)
+            .create(true)
+            .open(&file_path)
+            .await
+            .unwrap();
         let t_store = Store::new(t_file).await.unwrap();
         t_store.append(TEST_LOG_ENTRY).await.unwrap();
         let before_size = get_file_size().await.unwrap();
@@ -180,7 +198,12 @@ mod tests {
     async fn get_file_size() -> std::io::Result<u64> {
         let tmp_dir = env::temp_dir();
         let file_path = tmp_dir.join("store_close_test");
-        let t_file = File::options().append(true).read(true).create(true).open(&file_path).await?;
+        let t_file = File::options()
+            .append(true)
+            .read(true)
+            .create(true)
+            .open(&file_path)
+            .await?;
 
         let file_size = t_file.metadata().await?.size();
 
