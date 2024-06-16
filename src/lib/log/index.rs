@@ -6,6 +6,7 @@ use byteorder::{BigEndian, ByteOrder};
 use memmap2::MmapMut;
 use tokio::fs::File;
 use tokio::sync::Mutex;
+use crate::log::config::Config;
 
 const OFF_WIDTH: u64 = 4;
 const POS_WIDTH: u64 = 8;
@@ -18,18 +19,8 @@ struct InnerIndex {
     size: u64,
 }
 
-#[derive(Clone, Debug, Default)]
-pub(crate) struct SegmentConfig {
-    pub(crate) max_index_bytes: u64,
-}
-
-#[derive(Clone, Debug, Default)]
-pub(crate) struct Config {
-    pub(crate) segment: SegmentConfig,
-}
-
 impl InnerIndex {
-    async fn new(file: File, config: Config) -> Result<Self> {
+    async fn new(file: File, config: &Config) -> Result<Self> {
         let size = file.metadata().await?.size();
         file.set_len(config.segment.max_index_bytes).await?;
         let mmap = unsafe { MmapMut::map_mut(&file)? };
@@ -92,7 +83,7 @@ pub(crate) struct Index {
 }
 
 impl Index {
-    pub(crate) async fn new(file: File, config: Config) -> Result<Self> {
+    pub(crate) async fn new(file: File, config: &Config) -> Result<Self> {
         let inner_index = InnerIndex::new(file, config).await?;
         Ok(Self {
             inner: Arc::new(Mutex::new(inner_index)),
@@ -138,7 +129,7 @@ mod tests {
         let mut config = Config::default();
         config.segment.max_index_bytes = 1024;
 
-        let idx = Index::new(t_file, config.clone()).await.unwrap();
+        let idx = Index::new(t_file, &config).await.unwrap();
         let res = idx.read(-1).await;
         res.expect_err("expected unexpected EOF error");
 
@@ -163,7 +154,7 @@ mod tests {
             .open(&file_path)
             .await
             .unwrap();
-        let idx = Index::new(t_file, config.clone()).await.unwrap();
+        let idx = Index::new(t_file, &config).await.unwrap();
         let (off, pos) = idx.read(-1).await.unwrap();
         assert_eq!(1, off);
         assert_eq!(entries[1].1, pos);

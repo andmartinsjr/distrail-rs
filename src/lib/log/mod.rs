@@ -1,2 +1,3 @@
-pub mod index;
-pub mod store;
+mod index;
+mod store;
+mod config;
