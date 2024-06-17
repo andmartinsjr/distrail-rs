@@ -2,15 +2,15 @@ use std::io::{Error, ErrorKind, Result};
 use std::os::unix::fs::MetadataExt;
 use std::sync::Arc;
 
+use crate::log::config::Config;
 use byteorder::{BigEndian, ByteOrder};
 use memmap2::MmapMut;
 use tokio::fs::File;
 use tokio::sync::Mutex;
-use crate::log::config::Config;
 
-const OFF_WIDTH: u64 = 4;
-const POS_WIDTH: u64 = 8;
-const ENT_WIDTH: u64 = OFF_WIDTH + POS_WIDTH;
+pub(crate) const OFF_WIDTH: u64 = 4;
+pub(crate) const POS_WIDTH: u64 = 8;
+pub(crate) const ENT_WIDTH: u64 = OFF_WIDTH + POS_WIDTH;
 
 #[derive(Debug)]
 struct InnerIndex {
@@ -78,6 +78,7 @@ impl InnerIndex {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct Index {
     inner: Arc<Mutex<InnerIndex>>,
 }
@@ -100,9 +101,17 @@ impl Index {
         inner_guard.write(off, pos).await
     }
 
+    pub(crate) async fn finish(&self) -> Result<()> {
+        let inner_guard = self.inner.lock().await;
+        inner_guard.finish().await
+    }
+
     pub(crate) async fn close(self) -> Result<()> {
         let inner_guard = self.inner.lock().await;
         inner_guard.finish().await
+    }
+    pub(crate) async fn size(&self) -> u64 {
+        self.inner.lock().await.size
     }
 }
 

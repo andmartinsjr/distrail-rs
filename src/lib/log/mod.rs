@@ -1,3 +1,4 @@
-mod index;
-mod store;
 mod config;
+mod index;
+mod segment;
+mod store;

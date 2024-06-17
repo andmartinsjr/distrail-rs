@@ -61,7 +61,7 @@ impl InnerStore {
         Ok(read_size as u64)
     }
 
-    async fn flush(&mut self) -> Result<()> {
+    async fn finish(&mut self) -> Result<()> {
         self.buf_file.flush().await?;
         Ok(())
     }
@@ -95,9 +95,18 @@ impl Store {
         inner_guard.read_at(p, off).await
     }
 
+    pub(crate) async fn finish(&self) -> Result<()> {
+        let mut inner_guard = self.inner.lock().await;
+        inner_guard.finish().await
+    }
+
     pub(crate) async fn close(self) -> Result<()> {
         let mut inner_guard = self.inner.lock().await;
-        inner_guard.flush().await
+        inner_guard.finish().await
+    }
+
+    pub(crate) async fn size(&self) -> u64 {
+        self.inner.lock().await.size
     }
 }
 
